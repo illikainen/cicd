@@ -1,0 +1,80 @@
+---
+name: Semgrep
+
+on:
+  workflow_call:
+    inputs:
+      pubkey:
+        required: true
+        type: "string"
+
+jobs:
+  semgrep:
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    steps:
+      - name: Prepare signing key
+        run: |
+          echo '${{ inputs.pubkey }}' >"${HOME}/.signers"
+
+      - name: Install packages
+        run: |
+          apk update
+          apk upgrade
+          apk add git
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify
+        run: |
+          chown -R root:root .
+          git -c gpg.ssh.allowedSignersFile="${HOME}/.signers" verify-commit HEAD
+
+      - name: Scan
+        run: |
+          semgrep scan \
+            --error \
+            --strict \
+            --metrics=off \
+            --config=p/bandit \
+            --config=p/c \
+            --config=p/c-audit-banned-functions \
+            --config=p/command-injection \
+            --config=p/csharp \
+            --config=p/cwe-top-25 \
+            --config=p/django \
+            --config=p/docker-compose \
+            --config=p/dockerfile \
+            --config=p/expressjs \
+            --config=p/flask \
+            --config=p/gitlab \
+            --config=p/golang \
+            --config=p/gosec \
+            --config=p/insecure-transport-jsnode \
+            --config=p/java \
+            --config=p/javascript \
+            --config=p/jwt \
+            --config=p/kotlin \
+            --config=p/kubernetes \
+            --config=p/lockfiles \
+            --config=p/nodejs \
+            --config=p/python \
+            --config=p/r2c-best-practices \
+            --config=p/r2c-bug-scan \
+            --config=p/r2c-security-audit \
+            --config=p/react \
+            --config=p/secrets \
+            --config=p/secure-defaults \
+            --config=p/security-audit \
+            --config=p/sql-injection \
+            --config=p/supply-chain \
+            --config=p/swift \
+            --config=p/terraform \
+            --config=p/trailofbits \
+            --config=p/typescript \
+            --config=p/xss \
+            .
