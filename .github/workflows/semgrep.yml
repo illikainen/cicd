@@ -3,10 +3,6 @@ name: Semgrep
 
 on:  # yamllint disable-line rule:truthy
   workflow_call:
-    inputs:
-      pubkeys:
-        required: true
-        type: "string"
 
 jobs:
   semgrep:
@@ -14,13 +10,6 @@ jobs:
     container:
       image: semgrep/semgrep
     steps:
-      - name: Prepare verification keys
-        run: |
-          rm -f "${HOME}/.signers"
-          for pubkey in ${{ inputs.pubkeys }}; do
-            echo "$pubkey" |tr : ' ' >> "${HOME}/.signers"
-          done
-
       - name: Install packages
         run: |
           apk update
@@ -35,6 +24,7 @@ jobs:
       - name: Verify
         run: |
           chown -R root:root .
+          echo "${{ vars.ALLOWED_SIGNERS }}" > "${HOME}/.signers"
           git -c gpg.ssh.allowedSignersFile="${HOME}/.signers" verify-commit HEAD
 
       - name: Scan
