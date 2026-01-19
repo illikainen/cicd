@@ -1,0 +1,14 @@
+---
+name: Local pipeline
+
+on: [push, pull_request]  # yamllint disable-line rule:truthy
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    uses: ./.github/workflows/yamllint.yml
+    with:
+      pubkeys: >-
+        dev-personal-git@iodine:ssh-ed25519:AAAAC3NzaC1lZDI1NTE5AAAAIOaK5/rx1e5OSInMYOwoLeGyIwi7Hpao0qUC4oyO0/Wr
