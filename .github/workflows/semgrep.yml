@@ -4,7 +4,7 @@ name: Semgrep
 on:
   workflow_call:
     inputs:
-      pubkey:
+      pubkeys:
         required: true
         type: "string"
 
@@ -14,9 +14,12 @@ jobs:
     container:
       image: semgrep/semgrep
     steps:
-      - name: Prepare signing key
+      - name: Prepare verification keys
         run: |
-          echo '${{ inputs.pubkey }}' >"${HOME}/.signers"
+          rm -f "${HOME}/.signers"
+          for pubkey in ${{ inputs.pubkeys }}; do
+            echo "$pubkey" |tr : ' ' >> "${HOME}/.signers"
+          done
 
       - name: Install packages
         run: |
