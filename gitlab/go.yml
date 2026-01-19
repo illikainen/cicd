@@ -1,8 +1,6 @@
 ---
 spec:
   inputs:
-    pubkeys:
-      type: 'string'
     targets:
       type: 'string'
       default: 'linux:amd64'
@@ -31,13 +29,8 @@ build:
     apt-get -y dist-upgrade
     apt-get -y install ca-certificates git golang openssl
 
-    echo "=> Prepare verification keys"
-    rm -f "${HOME}/.signers"
-    for pubkey in $[[ inputs.pubkeys ]]; do
-      echo "$pubkey" |tr : ' ' >> "${HOME}/.signers"
-    done
-
     echo "=> Verify repository"
+    echo "$ALLOWED_SIGNERS" >"${HOME}/.signers"
     git -c gpg.ssh.allowedSignersFile="${HOME}/.signers" verify-commit HEAD
     git checkout -B "$CI_COMMIT_REF_NAME"
     git -c gpg.ssh.allowedSignersFile="${HOME}/.signers" verify-commit HEAD
