@@ -1,0 +1,146 @@
+---
+name: Go
+
+on:
+  workflow_call:
+    inputs:
+      pubkeys:
+        required: true
+        type: "string"
+      targets:
+        required: false
+        type: "string"
+        default: "linux:amd64"
+      build:
+        required: false
+        type: "boolean"
+        default: true
+      test:
+        required: false
+        type: "boolean"
+        default: true
+
+jobs:
+  build:
+    if: "${{ inputs.build }}"
+    runs-on: ubuntu-latest
+    container:
+      image: debian:13
+    steps:
+      - name: Prepare verification keys
+        run: |
+          rm -f "${HOME}/.signers"
+          for pubkey in ${{ inputs.pubkeys }}; do
+            echo "$pubkey" |tr : ' ' >> "${HOME}/.signers"
+          done
+
+      - name: Install packages
+        run: |
+          apt-get update
+          apt-get -y dist-upgrade
+          apt-get -y install ca-certificates git golang openssl
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify
+        run: |
+          chown -R root:root .
+          git -c gpg.ssh.allowedSignersFile="${HOME}/.signers" verify-commit HEAD
+
+      - name: Prepare dependencies
+        run: |
+          go mod tidy
+          go mod verify
+          git diff go.mod go.sum
+          sha256sum --strict --check go.pin
+
+      - name: Regular build
+        run: |
+          go env -w GOPROXY="off" CGO_ENABLED="0"
+          go generate ./...
+          go build -mod=readonly -trimpath -o "build/${GITHUB_REPOSITORY##*/}"
+
+      - name: Release build
+        run: |
+          go env -w GOPROXY="off" CGO_ENABLED="0"
+          GOFER_RELEASE=true go generate ./...
+
+          for target in ${{ inputs.targets }}; do
+            export GOOS="${target%%:*}"
+            export GOARCH="${target#*:}"
+            go build -o "build/release/${GITHUB_REPOSITORY##*/}-${GOOS}-${GOARCH}" \
+              -mod=readonly -trimpath -buildmode=pie -ldflags="-s -w -buildid="
+          done
+
+      - name: Checksums
+        run: |
+          find build ! -type d -exec sha256sum --tag '{}' \; >SHA256SUMS
+          cat SHA256SUMS |sort
+          find build ! -type d -exec openssl blake2s256 '{}' \; >BLAKE256SUMS
+          cat BLAKE256SUMS |sort
+          mv SHA256SUMS BLAKE256SUMS build/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          path: ./build
+
+  test:
+    if: "${{ inputs.test }}"
+    runs-on: ubuntu-latest
+    container:
+      image: debian:12
+    steps:
+      - name: Prepare verification keys
+        run: |
+          rm -f "${HOME}/.signers"
+          for pubkey in ${{ inputs.pubkeys }}; do
+            echo "$pubkey" |tr : ' ' >> "${HOME}/.signers"
+          done
+
+      - name: Install packages
+        run: |
+          apt-get update
+          apt-get -y dist-upgrade
+          apt-get -y install ca-certificates git golang make
+
+      - name: Checkout gofer
+        uses: actions/checkout@v4
+        with:
+          path: gofer
+          repository: illikainen/gofer
+          fetch-depth: 0
+
+      - name: Build gofer
+        run: |
+          chown -R root:root .
+          git -c gpg.ssh.allowedSignersFile="${HOME}/.signers" verify-commit HEAD
+          make tidy
+          make verify
+          make
+          cp build/gofer-linux-amd64 /usr/local/bin/gofer
+        working-directory: gofer
+
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+        with:
+          path: this
+          fetch-depth: 0
+
+      - name: Build this repo
+        run: |
+          chown -R root:root .
+          git -c gpg.ssh.allowedSignersFile="${HOME}/.signers" verify-commit HEAD
+          make tidy
+          make verify
+          make
+        working-directory: this
+
+      - name: Test
+        run: |
+          make check
+          make test
+        working-directory: this
