@@ -1,0 +1,78 @@
+---
+spec:
+  inputs:
+    pubkeys:
+      type: 'string'
+    targets:
+      type: 'string'
+      default: 'linux:amd64'
+
+---
+image: debian:13
+
+workflow:
+  rules:
+    - if: '$CI_COMMIT_MESSAGE =~ /(skip-ci|skip-gitlab)/i'
+      when: never
+    - when: always
+
+variables:
+  GIT_DEPTH: 0
+  LC_ALL: 'C'
+  TZ: 'UTC'
+
+build:
+  stage: build
+  script: |
+    set -euo pipefail
+
+    echo "=> Install packages"
+    apt-get update
+    apt-get -y dist-upgrade
+    apt-get -y install ca-certificates git golang openssl
+
+    echo "=> Prepare verification keys"
+    rm -f "${HOME}/.signers"
+    for pubkey in $[[ inputs.pubkeys ]]; do
+      echo "$pubkey" |tr : ' ' >> "${HOME}/.signers"
+    done
+
+    echo "=> Verify repository"
+    git -c gpg.ssh.allowedSignersFile="${HOME}/.signers" verify-commit HEAD
+    git checkout -B "$CI_COMMIT_REF_NAME"
+    git -c gpg.ssh.allowedSignersFile="${HOME}/.signers" verify-commit HEAD
+
+    echo "=> Retrieve dependencies"
+    go mod tidy
+    go mod verify
+    git diff go.mod go.sum
+    sha256sum --strict --check go.pin
+
+    echo "=> Configure go"
+    go env -w GOPROXY="off" CGO_ENABLED="0"
+
+    echo "=> Regular build"
+    go generate ./...
+    go build -mod=readonly -trimpath -o "build/${CI_PROJECT_NAME}"
+
+    echo "=> Release build"
+    GOFER_RELEASE=true go generate ./...
+
+    for target in $[[ inputs.targets ]]; do
+      export GOOS="${target%%:*}"
+      export GOARCH="${target#*:}"
+      go build -o "build/release/${CI_PROJECT_NAME}-${GOOS}-${GOARCH}" \
+        -mod=readonly -trimpath -buildmode=pie -ldflags="-s -w -buildid="
+    done
+
+    echo "=> Checksum"
+    find build ! -type d -exec sha256sum --tag '{}' \; >SHA256SUMS
+    cat SHA256SUMS |sort
+    find build ! -type d -exec openssl blake2s256 '{}' \; >BLAKE256SUMS
+    cat BLAKE256SUMS |sort
+    mv SHA256SUMS BLAKE256SUMS build/
+
+  artifacts:
+    paths:
+      - ./build
+    expire_in: 1 week
