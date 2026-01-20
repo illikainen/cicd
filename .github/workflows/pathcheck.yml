@@ -1,0 +1,114 @@
+---
+name: Validate path names and file contents
+
+on:  # yamllint disable-line rule:truthy
+  workflow_call:
+    inputs:
+      allow_path:
+        required: false
+        type: 'string'
+        default: '^[\x20-\x7e]+$'
+      allow_content:
+        required: false
+        type: 'string'
+        default: '^[\x09\x0a\x20-\x7e]*$'
+      exclude:
+        required: false
+        type: 'string'
+
+jobs:
+  pathcheck:
+    runs-on: ubuntu-latest
+    container:
+      image: debian:13
+    steps:
+      - name: Install packages
+        run: |
+          apt-get update
+          apt-get -y dist-upgrade
+          apt-get -y install git python3
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify
+        run: |
+          chown -R root:root .
+          echo "${{ vars.ALLOWED_SIGNERS }}" > "${HOME}/.signers"
+          git -c gpg.ssh.allowedSignersFile="${HOME}/.signers" verify-commit HEAD
+
+      - name: Scan
+        run: |
+          cat >/tmp/pathcheck <<EOF
+          #!/usr/bin/env python3
+
+          import argparse
+          import os
+          import re
+          import sys
+
+
+          def validate_path(basedir, path, pattern):
+              if not re.search(pattern, path):
+                  raise RuntimeError("bad path")
+
+              if os.path.islink(path):
+                  real_basedir = os.path.realpath(basedir)
+                  real_path = os.path.realpath(path)
+                  if not real_path.startswith(real_basedir + os.sep):
+                      raise RuntimeError(f"{path}: bad link")
+
+
+          def validate_content(path, pattern):
+              with open(path, "rb") as f:
+                  if not re.search(pattern.encode(), f.read()):
+                      raise RuntimeError(f"{path}: bad content")
+
+
+          def scan(path, allow_path, allow_content, exclude):
+              for dirpath, dirnames, filenames in os.walk(path):
+                  for name in dirnames:
+                      cur = os.path.join(dirpath, name)
+                      validate_path(path, cur, allow_path)
+
+                  for name in filenames:
+                      cur = os.path.join(dirpath, name)
+                      validate_path(path, cur, allow_path)
+
+                      if not cur.startswith(os.path.join(path, ".git") + os.sep):
+                          if exclude and re.search(exclude, cur):
+                              print(f"=> Excluding {cur}")
+                          else:
+                              print(f"=> Scanning {cur}")
+                              validate_content(cur, allow_content)
+
+
+          def parse_args():
+              ap = argparse.ArgumentParser()
+              ap.add_argument("--allow-path", required=True)
+              ap.add_argument("--allow-content", required=True)
+              ap.add_argument("--exclude")
+              ap.add_argument("path")
+              return ap.parse_args()
+
+
+          def main():
+              args = parse_args()
+              try:
+                  scan(args.path, args.allow_path, args.allow_content, args.exclude)
+              except Exception as e:
+                  print(f"ERROR: {e}")
+                  sys.exit(1)
+
+
+          if __name__ == "__main__":
+              main()
+          EOF
+
+          python3 /tmp/pathcheck \
+            --allow-path '${{ inputs.allow_path }}' \
+            --allow-content '${{ inputs.allow_content }}' \
+            --exclude '${{ inputs.exclude }}' \
+            .
