@@ -1,0 +1,145 @@
+---
+name: Golangci-lint
+
+on:  # yamllint disable-line rule:truthy
+  workflow_call:
+
+jobs:
+  golangci-lint:
+    runs-on: ubuntu-latest
+    container:
+      image: alpine:latest
+    steps:
+      - name: Install packages
+        run: |
+          apk update
+          apk upgrade
+          apk add git go golangci-lint openssh-keygen
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify
+        run: |
+          chown "$(id -u):$(id -g)" .
+          echo "${{ vars.ALLOWED_SIGNERS }}" > "${HOME}/.signers"
+          git -c gpg.ssh.allowedSignersFile="${HOME}/.signers" verify-commit HEAD
+
+      - name: Prepare default config
+        run: |
+          if [ -f .golangci.yml ]; then
+            exit 0
+          fi
+
+          cat >.golangci.yml <<EOF
+          ---
+          version: "2"
+
+          linters:
+            default: all
+            disable:
+              - cyclop
+              - depguard
+              - exhaustruct
+              - funcorder
+              - gochecknoglobals
+              - gochecknoinits
+              - gocognit
+              - godoclint
+              - godox
+              - mnd
+              - nonamedreturns
+              - varnamelen
+              - wrapcheck
+              - wsl
+              - wsl_v5
+            settings:
+              funlen:
+                lines: 120
+                statements: 40
+                ignore-comments: true
+
+              gocritic:
+                enable-all: true
+                disabled-checks:
+                  - ifElseChain
+                  - paramTypeCombine
+
+              nestif:
+                min-complexity: 15
+
+              revive:
+                severity: error
+                enable-all-rules: true
+                rules:
+                  - name: argument-limit
+                    arguments: [8]
+                  - name: add-constant
+                    disabled: true
+                  - name: banned-characters
+                    disabled: true
+                  - name: confusing-naming
+                    disabled: true
+                  - name: cognitive-complexity
+                    arguments: [60]
+                    disabled: false
+                  - name: cyclomatic
+                    arguments: [60]
+                    disabled: false
+                  - name: deep-exit
+                    disabled: true
+                  - name: exported
+                    disabled: true
+                  - name: file-header
+                    disabled: true
+                  - name: flag-parameter
+                    disabled: true
+                  - name: function-length
+                    arguments: [100, 200]
+                    disabled: false
+                  - name: function-result-limit
+                    arguments: [3]
+                    disabled: false
+                  - name: line-length-limit
+                    arguments: [110]
+                    disabled: false
+                  - name: max-public-structs
+                    arguments: [15]
+                    disabled: false
+                  - name: package-comments
+                    disabled: true
+                  - name: unused-receiver
+                    disabled: true
+
+              staticcheck:
+                checks:
+                  - 'all'
+                  - '-QF1003'
+                  - '-ST1000'
+                  - '-ST1020'
+
+          formatters:
+            enable:
+              - gci
+              - gofmt
+              - gofumpt
+              - goimports
+              - golines
+              - swaggo
+            settings:
+              golines:
+                max-len: 110
+                reformat-tags: true
+          EOF
+
+      # FIXME: let the pipeline fail when the warnings are resolved
+      - name: Lint
+        run: |
+          golangci-lint run || true
+
+      # FIXME: let the pipeline fail when the diff is merged
+      - name: Format
+        run: |
+          golangci-lint fmt --diff || true
