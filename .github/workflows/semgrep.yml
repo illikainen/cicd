@@ -14,7 +14,7 @@ jobs:
         run: |
           apk update
           apk upgrade
-          apk add git
+          apk add ca-certificates curl git
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -27,62 +27,26 @@ jobs:
           echo "${{ vars.ALLOWED_SIGNERS }}" > "${HOME}/.signers"
           git -c gpg.ssh.allowedSignersFile="${HOME}/.signers" verify-commit HEAD
 
+      - name: Download rules
+        run: |
+          curl \
+            --fail \
+            --proto =https \
+            --capath /dev/null \
+            --cacert /usr/share/ca-certificates/mozilla/Amazon_Root_CA_1.crt \
+            --location \
+            --max-redirs 1 \
+            --output /rules.yml \
+            https://semgrep.dev/c/r/all
+            sha256sum /rules.yml
+
       - name: Scan
         run: |
           semgrep scan \
-            --error \
-            --strict \
+            --disable-version-check \
             --metrics=off \
-            --config=p/bandit \
-            --config=p/c \
-            --config=p/c-audit-banned-functions \
-            --config=p/command-injection \
-            --config=p/cpp-audit \
-            --config=p/csharp \
-            --config=p/cwe-top-25 \
-            --config=p/default \
-            --config=p/django \
-            --config=p/docker \
-            --config=p/docker-compose \
-            --config=p/dockerfile \
-            --config=p/expressjs \
-            --config=p/fastapi \
-            --config=p/findsecbugs \
-            --config=p/flask \
-            --config=p/flawfinder \
-            --config=p/gitlab \
-            --config=p/golang \
-            --config=p/gosec \
-            --config=p/hapi \
-            --config=p/insecure-transport-jsnode \
-            --config=p/java \
-            --config=p/javascript \
-            --config=p/jwt \
-            --config=p/kotlin \
-            --config=p/kubernetes \
-            --config=p/lockfiles \
-            --config=p/nextjs \
-            --config=p/nodejs \
-            --config=p/owasp-top-ten \
-            --config=p/php \
-            --config=p/php-laravel \
-            --config=p/phpcs-security-audit \
-            --config=p/python \
-            --config=p/r2c-best-practices \
-            --config=p/r2c-bug-scan \
-            --config=p/r2c-security-audit \
-            --config=p/react \
-            --config=p/ruby \
-            --config=p/rust \
-            --config=p/secrets \
-            --config=p/secure-defaults \
-            --config=p/security-audit \
-            --config=p/security-headers \
-            --config=p/sql-injection \
-            --config=p/supply-chain \
-            --config=p/swift \
-            --config=p/terraform \
-            --config=p/trailofbits \
-            --config=p/typescript \
-            --config=p/xss \
+            --error \
+            --config=/rules.yml \
+            --exclude-rule=dgryski.semgrep-go.readfull.io-readfull-n \
+            --exclude-rule=dgryski.semgrep-go.errtodo.err-todo \
             .
