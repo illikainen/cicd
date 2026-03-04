@@ -83,13 +83,13 @@ jobs:
     if: "${{ inputs.test }}"
     runs-on: ubuntu-latest
     container:
-      image: debian:12
+      image: debian:13
     steps:
       - name: Install packages
         run: |
           apt-get update
           apt-get -y dist-upgrade
-          apt-get -y install ca-certificates git golang make
+          apt-get -y install ca-certificates git golang make yamllint
 
       - name: Checkout gofer
         uses: actions/checkout@v4
