@@ -4,6 +4,10 @@ name: Go
 on:  # yamllint disable-line rule:truthy
   workflow_call:
     inputs:
+      packages:
+        required: false
+        type: "string"
+        default: "."
       targets:
         required: false
         type: "string"
@@ -52,7 +56,7 @@ jobs:
         run: |
           go env -w GOPROXY="off" CGO_ENABLED="0"
           go generate ./...
-          go build -mod=readonly -trimpath -o "build/${GITHUB_REPOSITORY##*/}"
+          go build -mod=readonly -trimpath -o "build/" ${{ inputs.packages }}
 
       - name: Release build
         run: |
@@ -62,8 +66,9 @@ jobs:
           for target in ${{ inputs.targets }}; do
             export GOOS="${target%%:*}"
             export GOARCH="${target#*:}"
-            go build -o "build/release/${GITHUB_REPOSITORY##*/}-${GOOS}-${GOARCH}" \
-              -mod=readonly -trimpath -buildmode=pie -ldflags="-s -w -buildid="
+            go build -o "build/release/${GOOS}-${GOARCH}/" \
+              -mod=readonly -trimpath -buildmode=pie -ldflags="-s -w -buildid=" \
+              ${{ inputs.packages }}
           done
 
       - name: Checksums
@@ -106,7 +111,7 @@ jobs:
           make tidy
           make verify
           make
-          cp build/gofer-linux-amd64 /usr/local/bin/gofer
+          cp build/linux-amd64/gofer /usr/local/bin/gofer
         working-directory: gofer
 
       - name: Checkout this repo
