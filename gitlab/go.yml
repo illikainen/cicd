@@ -49,7 +49,7 @@ build:
 
     echo "=> Regular build"
     go generate ./...
-    go build -mod=readonly -trimpath -o "build/" $[[ inputs.packages ]]
+    go build -o "build/" -mod=readonly -trimpath -tags netgo,osusergo $[[ inputs.packages ]]
 
     echo "=> Release build"
     GOFER_RELEASE=true go generate ./...
@@ -58,8 +58,8 @@ build:
       export GOOS="${target%%:*}"
       export GOARCH="${target#*:}"
       go build -o "build/release/${GOOS}-${GOARCH}/" \
-        -mod=readonly -trimpath -buildmode=pie -ldflags="-s -w -buildid=" \
-          $[[ inputs.packages ]]
+        -mod=readonly -trimpath -tags netgo,osusergo -buildmode=pie \
+        -ldflags="-s -w -buildid=" $[[ inputs.packages ]]
     done
 
     echo "=> Checksum"
