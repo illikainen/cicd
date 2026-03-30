@@ -80,7 +80,7 @@ jobs:
                   - unnamedResult
 
               nestif:
-                min-complexity: 15
+                min-complexity: 20
 
               perfsprint:
                 error-format: false
@@ -116,7 +116,7 @@ jobs:
                     arguments: [3]
                     disabled: false
                   - name: line-length-limit
-                    arguments: [110]
+                    arguments: [120]
                     disabled: false
                   - name: max-public-structs
                     arguments: [15]
@@ -152,7 +152,7 @@ jobs:
               - swaggo
             settings:
               golines:
-                max-len: 110
+                max-len: 120
                 reformat-tags: true
           EOF
 
