@@ -78,6 +78,7 @@ jobs:
                   - regexpSimplify
                   - sloppyLen
                   - unnamedResult
+                  - whyNoLint
 
               nestif:
                 min-complexity: 20
