@@ -136,6 +136,7 @@ jobs:
                   - '-QF1003'
                   - '-ST1000'
                   - '-ST1020'
+                  - '-ST1022'
 
               tagliatelle:
                 case:
