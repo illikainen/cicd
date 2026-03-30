@@ -121,17 +121,16 @@ jobs:
           path: this
           fetch-depth: 0
 
-      - name: Build this repo
+      - name: Verify this repo
         run: |
           chown -R root:root .
           git -c gpg.ssh.allowedSignersFile="${HOME}/.signers" verify-commit HEAD
-          make tidy
-          make verify
-          make
         working-directory: this
 
       - name: Test
         run: |
+          make tidy
+          make verify
           make check
           make test
         working-directory: this
