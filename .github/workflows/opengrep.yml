@@ -1,0 +1,97 @@
+---
+name: Opengrep
+
+on:  # yamllint disable-line rule:truthy
+  workflow_call:
+
+env:
+  OPENGREP_VERSION: "v1.16.0"
+  OPENGREP_SHA256: "3703f08ea505068b96492e6fdde45c47868e6a294167e77620f02cee2917fa2e"
+  OPENGREP_URL: "https://github.com/opengrep/opengrep/releases/download"
+  OPENGREP_CA: "/etc/ssl/certs/ISRG_Root_X1.pem /etc/ssl/certs/USERTrust_ECC_Certification_Authority.pem"
+  SEMGREP_URL: "https://semgrep.dev/c/r/"
+  SEMGREP_CA: "/etc/ssl/certs/Amazon_Root_CA_1.pem"
+
+jobs:
+  opengrep:
+    runs-on: ubuntu-latest
+    container:
+      image: debian:13
+    steps:
+      - name: Install packages
+        run: |
+          apt-get update
+          apt-get dist-upgrade -y
+          apt-get install -y ca-certificates cosign curl git locales yq
+          apt-get clean
+
+      - name: Setup locale
+        run: |
+          echo 'en_US.UTF-8 UTF-8' >/etc/locale.gen
+          locale-gen
+
+      - name: Download and verify Opengrep
+        run: |
+          cat $OPENGREP_CA >ca.pem
+          for ext in "" .cert .sig; do
+            curl \
+              --fail \
+              --proto =https \
+              --capath /dev/null \
+              --cacert ./ca.pem \
+              --location \
+              --max-redirs 1 \
+              --output "opengrep${ext}" \
+              "${OPENGREP_URL}/${OPENGREP_VERSION}/opengrep_manylinux_x86${ext}"
+          done
+          rm ca.pem
+
+          echo -n "SHA256: "
+          echo "$OPENGREP_SHA256  opengrep" | sha256sum --strict --check || exit 1
+
+          echo -n "Cosign: "
+          cosign verify-blob \
+            --cert opengrep.cert \
+            --signature opengrep.sig \
+            --certificate-identity-regexp '^https://github\.com/opengrep/opengrep.+' \
+            --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+            opengrep || exit 1
+
+          rm opengrep.cert opengrep.sig
+          chmod +x opengrep
+          mv opengrep /usr/local/bin
+
+      - name: Download rules
+        run: |
+          mkdir /rules
+          curl \
+            --fail \
+            --proto =https \
+            --capath /dev/null \
+            --cacert /usr/share/ca-certificates/mozilla/Amazon_Root_CA_1.crt \
+            --location \
+            --max-redirs 1 \
+            --output - \
+            https://semgrep.dev/c/r/all \
+            | cat -v \
+            | yq --yaml-output '.rules |= sort_by(.id)' >/rules/registry.yml
+            sha256sum /rules/registry.yml
+
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Scan
+        run: |
+          opengrep \
+            --config=/rules \
+            --exclude-rule=rules.dgryski.semgrep-go.errtodo.err-todo \
+            --exclude-rule=rules.dgryski.semgrep-go.hostport.sprintf-host-port \
+            --exclude-rule=rules.dgryski.semgrep-go.marshaljson.marshal-json-pointer-receiver \
+            --exclude-rule=rules.dgryski.semgrep-go.readfull.io-readfull-n \
+            --max-lines-per-finding 100 \
+            --disable-version-check \
+            --error \
+            --taint-intrafile \
+            .
+        env:
+          LC_ALL: en_US.UTF-8
