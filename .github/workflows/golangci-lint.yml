@@ -146,7 +146,6 @@ jobs:
 
           formatters:
             enable:
-              - gci
               - gofmt
               - gofumpt
               - goimports
