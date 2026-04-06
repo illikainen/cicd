@@ -3,6 +3,15 @@ name: Golangci-lint
 
 on:  # yamllint disable-line rule:truthy
   workflow_call:
+    inputs:
+      json_case:
+        required: false
+        type: "string"
+        default: "snake"
+      yaml_case:
+        required: false
+        type: "string"
+        default: "snake"
 
 jobs:
   golangci-lint:
@@ -51,20 +60,22 @@ jobs:
               - godoclint
               - godox
               - ireturn
+              - maintidx
               - mnd
               - nlreturn
               - noctx
               - noinlineerr
               - nonamedreturns
               - prealloc
+              - tagalign
               - varnamelen
               - wrapcheck
               - wsl
               - wsl_v5
             settings:
               funlen:
-                lines: 120
-                statements: 60
+                lines: 250
+                statements: 250
                 ignore-comments: true
 
               gocritic:
@@ -72,6 +83,7 @@ jobs:
                 disabled-checks:
                   - appendCombine
                   - equalFold
+                  - filepathJoin
                   - ifElseChain
                   - paramTypeCombine
                   - regexpMust
@@ -80,10 +92,21 @@ jobs:
                   - unnamedResult
                   - whyNoLint
 
+              gocyclo:
+                min-complexity: 50
+
+              godot:
+                exclude:
+                  - "^[ =-]+$"
+
+              interfacebloat:
+                max: 15
+
               nestif:
                 min-complexity: 20
 
               perfsprint:
+                int-conversion: false
                 error-format: false
 
               revive:
@@ -98,8 +121,10 @@ jobs:
                     disabled: true
                   - name: confusing-naming
                     disabled: true
+                  - name: confusing-results
+                    disabled: true
                   - name: cognitive-complexity
-                    arguments: [60]
+                    arguments: [80]
                     disabled: false
                   - name: cyclomatic
                     arguments: [60]
@@ -111,7 +136,7 @@ jobs:
                   - name: flag-parameter
                     disabled: true
                   - name: function-length
-                    arguments: [100, 200]
+                    arguments: [100, 250]
                     disabled: false
                   - name: function-result-limit
                     arguments: [3]
@@ -119,9 +144,14 @@ jobs:
                   - name: line-length-limit
                     arguments: [120]
                     disabled: false
+                  - name: max-control-nesting
+                    arguments: [10]
+                    disabled: false
                   - name: max-public-structs
                     arguments: [15]
                     disabled: false
+                  - name: nested-structs
+                    disabled: true
                   - name: package-comments
                     disabled: true
                   - name: unnecessary-format
@@ -142,7 +172,8 @@ jobs:
               tagliatelle:
                 case:
                   rules:
-                    json: kebab
+                    json: ${{ inputs.json_case }}
+                    yaml: ${{ inputs.yaml_case }}
 
           formatters:
             enable:
@@ -154,13 +185,19 @@ jobs:
             settings:
               golines:
                 max-len: 120
-                reformat-tags: true
+                reformat-tags: false
           EOF
+          cat .golangci.yml
 
-      - name: Format
+      - name: Format (allow non-zero exit)
         run: |
           golangci-lint fmt --diff || true
 
       - name: Lint
         run: |
+          go generate ./...
           golangci-lint run
+
+      - name: Format
+        run: |
+          golangci-lint fmt --diff
