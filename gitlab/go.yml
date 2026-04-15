@@ -7,6 +7,15 @@ spec:
     targets:
       type: 'string'
       default: 'linux:amd64'
+    upload:
+      type: 'boolean'
+      default: false
+    upload_url:
+      type: 'string'
+      default: 'https://files.heap.re/upload'
+    upload_ca:
+      type: 'string'
+      default: '/etc/ssl/certs/ISRG_Root_X1.pem'
 
 ---
 image: debian:13
@@ -30,7 +39,7 @@ build:
     echo "=> Install packages"
     apt-get update
     apt-get -y dist-upgrade
-    apt-get -y install ca-certificates git golang openssl
+    apt-get -y install ca-certificates curl git golang openssl
 
     echo "=> Verify repository"
     echo "$ALLOWED_SIGNERS" >"${HOME}/.signers"
@@ -63,13 +72,35 @@ build:
     done
 
     echo "=> Checksum"
-    find build ! -type d -exec sha256sum --tag '{}' \; >SHA256SUMS
-    cat SHA256SUMS |sort
-    find build ! -type d -exec openssl blake2s256 '{}' \; >BLAKE256SUMS
-    cat BLAKE256SUMS |sort
-    mv SHA256SUMS BLAKE256SUMS build/
+    find build ! -type d -exec sha256sum --tag '{}' \; | sort
+    find build ! -type d -exec openssl blake2s256 '{}' \; | sort
 
-  artifacts:
-    paths:
-      - ./build
-    expire_in: 1 week
+    if [ "$[[ inputs.upload ]]" = "true" ]; then
+      echo "=> Upload"
+
+      project="$(basename "$(pwd)")"
+      pkgs="$(go list -f '{{if eq .Name "main"}}{{.ImportPath}}{{end}}' ./...)"
+      cd build/release
+
+      for pkg in ${pkgs[@]}; do
+        name="$(basename "$pkg")"
+
+        for path in */"${name}"*; do
+          platform="$(dirname "$path")"
+          filename="$(basename "$path")"
+          url="$[[ inputs.upload_url ]]/${project}/${filename}-${platform}-${CI_COMMIT_SHORT_SHA}"
+          echo "=> Uploading $path to $url"
+
+          curl \
+            -X PUT \
+            --fail \
+            --proto =https \
+            --tlsv1.3 \
+            --capath /enoent \
+            --cacert "$[[ inputs.upload_ca ]]" \
+            --user "$UPLOAD_KEY" \
+            --upload-file "$path" \
+            "$url"
+        done
+      done
+    fi
